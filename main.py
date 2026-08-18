@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import os
+import signal
+import sys
 import aiohttp
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -8,11 +11,24 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from g4f.client import Client
 
-BOT_TOKEN = "8996039934:AAFaVo2V1vmZpdxfavRqND_oTp8VNUB9hu8"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stderr,
+)
+logger = logging.getLogger("telegram-bot")
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN environment variable is not set. Refusing to start.")
+    raise SystemExit("BOT_TOKEN environment variable is required but was not provided.")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 ai_client = Client()
+
+shutdown_event = asyncio.Event()
+
 
 # Хотира барои нигоҳдории забони корбар
 user_languages = {}
@@ -209,9 +225,12 @@ async def ask_photo_montage(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.waiting_for_photo_montage, F.photo)
 async def process_photo_montage(message: types.Message, state: FSMContext):
-    await message.answer("🖼️ Акс қабул шуд! Дар ҳоли коркард ва тағйир додани фон / монтаж бо ёрии AI...")
-    # Шумо метавонед ин ҷо дархости суратсозӣ ё коркардро ба AI ё модули дилхоҳ пайваст кунед
-    await message.answer("✅ Монтажи акс бо муваффақият иҷро шуд! (Барои гирифтани натиҷаи дақиқ ба зудӣ нейросетьҳои графикӣ пайваст карда мешаванд).")
+    user_id = message.from_user.id
+    logger.info("Photo montage requested by user_id=%s", user_id)
+    await message.answer(
+        "⚠️ Мутаассифона, функсияи монтажи акс дар айни ҳол дар версияи зинда фаъол нест. "
+        "Ин хусусият ҳанӯз дар ҳоли коркард аст ва ба зудӣ дастрас мешавад."
+    )
     await state.clear()
 
 @dp.message(BotStates.waiting_for_photo_montage)
@@ -226,18 +245,76 @@ async def ask_video_montage(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.waiting_for_video_montage, F.photo)
 async def process_video_montage(message: types.Message, state: FSMContext):
-    await message.answer("🎬 Акс қабул шуд! Дар ҳоли омода кардани сенария ва табдил додани сурат ба видеои динамикӣ...")
-    await message.answer("✅ Видео аз рӯи сурат сохта шуд! (Функсияи генератсияи видеоии AI дар ин версия фаъол шуд).")
+    user_id = message.from_user.id
+    logger.info("Video montage requested by user_id=%s", user_id)
+    await message.answer(
+        "⚠️ Мутаассифона, функсияи сохтани видео аз рӯи сурат дар айни ҳол дар версияи зинда фаъол нест. "
+        "Ин хусусият ҳанӯз дар ҳоли коркард аст ва ба зудӣ дастрас мешавад."
+    )
     await state.clear()
 
 @dp.message(BotStates.waiting_for_video_montage)
 async def wrong_video_montage(message: types.Message):
     await message.answer("⚠️ Лутфан суратеро, ки мехоҳед аз рӯи он видео созед, ҳамчун расм (фото) фиристед.")
 
+
+def _handle_shutdown_signal(sig_name: str) -> None:
+    logger.info("Received %s, initiating graceful shutdown...", sig_name)
+    shutdown_event.set()
+
+
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    loop = asyncio.get_running_loop()
+
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, lambda s=sig: _handle_shutdown_signal(s.name))
+    except (NotImplementedError, AttributeError):
+        # add_signal_handler is not available on some platforms (e.g. Windows)
+        logger.warning("Signal handlers for graceful shutdown are not supported on this platform.")
+
+    logger.info("Starting bot polling...")
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+
+    polling_task = asyncio.create_task(dp.start_polling(bot))
+    shutdown_task = asyncio.create_task(shutdown_event.wait())
+
+    try:
+        done, pending = await asyncio.wait(
+            {polling_task, shutdown_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+
+        if shutdown_task in done:
+            logger.info("Shutdown signal received, stopping polling gracefully...")
+            await dp.stop_polling()
+            polling_task.cancel()
+        elif polling_task in done:
+            exc = polling_task.exception()
+            if exc:
+                logger.error("Polling task crashed: %s", exc, exc_info=True)
+                raise exc
+    except Exception as e:
+        logger.error("Unexpected error in main loop: %s", e, exc_info=True)
+    finally:
+        for task in (polling_task, shutdown_task):
+            if not task.done():
+                task.cancel()
+        try:
+            await bot.session.close()
+        except Exception as e:
+            logger.error("Error while closing bot session: %s", e, exc_info=True)
+        logger.info("Bot shut down cleanly.")
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    while True:
+        try:
+            asyncio.run(main())
+            break
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received, exiting.")
+            break
+        except Exception as e:
+            logger.error("Fatal error, restarting polling loop in 5 seconds: %s", e, exc_info=True)
+            import time
+            time.sleep(5)
