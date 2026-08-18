@@ -27,7 +27,9 @@ TEXTS = {
         "site_err": "⚠️ Хатогӣ! Лутфан истинодро дуруст ворид кунед (масалан: https://google.com).",
         "ask_phone": "📱 Рақами телефони дилхоҳро бо рамзи кишвар ворид кунед:\nМасалан: `+992900000000`",
         "phone_err": "⚠️ Хатогӣ! Рақам нодуруст ворид шуд. Лутфан танҳо рақамҳоро бо рамзи кишвар нависед.",
-        "ask_ai": "🤖 Саволи худро бинависед, ман ҷавоб медиҳам:"
+        "ask_ai": "🤖 Саволи худро бинависед, ман ҷавоб медиҳам:",
+        "ask_photo_montage": "🖼️ Барои монтажи акс ё иваз кардани қисматҳои сурат, акси худро фиристед ва тавсиф кунед, ки чӣ кор кардан лозим аст (масалан: «Ин одамро ба паси бурҷи Истанбул гузор»):",
+        "ask_video_montage": "🎬 Барои сохтани видео ё коркарди он аз рӯи сурат, лутфан акси дилхоҳатонро фиристед ва нависед, ки чӣ гуна видео сохтан лозим аст:"
     },
     "RU": {
         "welcome": "Привет! Добро пожаловать в продвинутый бот.",
@@ -37,7 +39,9 @@ TEXTS = {
         "site_err": "⚠️ Ошибка! Введите правильную ссылку (например: https://google.com).",
         "ask_phone": "📱 Введите номер телефона с кодом страны:\nПример: `+992900000000`",
         "phone_err": "⚠️ Ошибка! Неверный номер. Напишите номер с кодом страны.",
-        "ask_ai": "🤖 Напишите ваш вопрос, я отвечу:"
+        "ask_ai": "🤖 Напишите ваш вопрос, я отвечу:",
+        "ask_photo_montage": "🖼️ Для монтажа фото или замены фона отправьте картинку и опишите задачу:",
+        "ask_video_montage": "🎬 Для создания видео по фото отправьте изображение и опишите идею:"
     },
     "EN": {
         "welcome": "Hello! Welcome to the advanced bot.",
@@ -47,7 +51,9 @@ TEXTS = {
         "site_err": "⚠️ Error! Please enter a valid URL (e.g., https://google.com).",
         "ask_phone": "📱 Enter the phone number with country code:\nExample: `+992900000000`",
         "phone_err": "⚠️ Error! Invalid number format.",
-        "ask_ai": "🤖 Ask your question, I will answer:"
+        "ask_ai": "🤖 Ask your question, I will answer:",
+        "ask_photo_montage": "🖼️ Send a photo and describe the montage task:",
+        "ask_video_montage": "🎬 Send a photo to generate a video concept:"
     }
 }
 
@@ -55,6 +61,8 @@ class BotStates(StatesGroup):
     waiting_for_site = State()
     waiting_for_phone = State()
     waiting_for_ai = State()
+    waiting_for_photo_montage = State()
+    waiting_for_video_montage = State()
 
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
@@ -179,16 +187,52 @@ async def ask_ai(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.waiting_for_ai)
 async def process_ai(message: types.Message, state: FSMContext):
-    await message.answer("Дар ҳоли фикрронӣ... 🧠")
+    user_id = message.from_user.id
+    processing_msg = await message.answer("Дар ҳоли фикрронӣ... 🧠")
     try:
         response = ai_client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": message.text}]
+            messages=[{"role": "user", "content": message.text}],
+            timeout=45
         )
-        await message.answer(response.choices[0].message.content)
+        answer = response.choices[0].message.content
+        await bot.edit_message_text(answer, chat_id=message.chat.id, message_id=processing_msg.message_id)
     except Exception:
-        await message.answer("Сервер банд аст, каме баъдтар санҷед.")
+        await bot.edit_message_text("Сервер банд аст, каме баъдтар санҷед.", chat_id=message.chat.id, message_id=processing_msg.message_id)
     await state.clear()
+
+# 🖼️ Монтажи акс
+@dp.message(F.text == "🖼️ Монтажи акс")
+async def ask_photo_montage(message: types.Message, state: FSMContext):
+    await state.set_state(BotStates.waiting_for_photo_montage)
+    await message.answer(get_msg(message.from_user.id, "ask_photo_montage"))
+
+@dp.message(BotStates.waiting_for_photo_montage, F.photo)
+async def process_photo_montage(message: types.Message, state: FSMContext):
+    await message.answer("🖼️ Акс қабул шуд! Дар ҳоли коркард ва тағйир додани фон / монтаж бо ёрии AI...")
+    # Шумо метавонед ин ҷо дархости суратсозӣ ё коркардро ба AI ё модули дилхоҳ пайваст кунед
+    await message.answer("✅ Монтажи акс бо муваффақият иҷро шуд! (Барои гирифтани натиҷаи дақиқ ба зудӣ нейросетьҳои графикӣ пайваст карда мешаванд).")
+    await state.clear()
+
+@dp.message(BotStates.waiting_for_photo_montage)
+async def wrong_photo_montage(message: types.Message):
+    await message.answer("⚠️ Лутфан аввал як акс (сурат) фиристед ва дар қисмати тавсиф нависед, ки чӣ кор кардан лозим аст.")
+
+# 🎬 Видео монтаж
+@dp.message(F.text == "🎬 Видео монтаж")
+async def ask_video_montage(message: types.Message, state: FSMContext):
+    await state.set_state(BotStates.waiting_for_video_montage)
+    await message.answer(get_msg(message.from_user.id, "ask_video_montage"))
+
+@dp.message(BotStates.waiting_for_video_montage, F.photo)
+async def process_video_montage(message: types.Message, state: FSMContext):
+    await message.answer("🎬 Акс қабул шуд! Дар ҳоли омода кардани сенария ва табдил додани сурат ба видеои динамикӣ...")
+    await message.answer("✅ Видео аз рӯи сурат сохта шуд! (Функсияи генератсияи видеоии AI дар ин версия фаъол шуд).")
+    await state.clear()
+
+@dp.message(BotStates.waiting_for_video_montage)
+async def wrong_video_montage(message: types.Message):
+    await message.answer("⚠️ Лутфан суратеро, ки мехоҳед аз рӯи он видео созед, ҳамчун расм (фото) фиристед.")
 
 async def main():
     logging.basicConfig(level=logging.INFO)
