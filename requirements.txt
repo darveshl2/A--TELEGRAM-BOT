@@ -1,0 +1,6 @@
+aiogram
+requests
+aiohttp
+pydantic
+urllib3
+certifi
