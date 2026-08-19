@@ -1,3 +1,10 @@
 aiogram
 requests
 g4f
+google-genai
+pillow
+edge-tts
+aiohttp
+beautifulsoup4
+aiosqlite
+python-dotenv
