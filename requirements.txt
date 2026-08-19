@@ -1,7 +1,4 @@
-
 pyTelegramBotAPI
-flask
-groq
-scapy
-pwntools
+google-generativeai
 requests
+Flask
