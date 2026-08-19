@@ -2,8 +2,21 @@ import os
 import telebot
 from telebot import types
 from openai import OpenAI
+from flask import Flask
+from threading import Thread
 
-# Гирифтани токенҳо
+# Сервери Flask барои бастани порт дар Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run_server():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# Гирифтани токенҳо аз Environment Variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
@@ -16,19 +29,19 @@ SYSTEM_PROMPT = """
 Вазифаҳои шумо:
 1. Киберамният ва Хакерӣ: Таҳлили заъфҳои системаҳо, Penetration Testing, таҳлили форензикӣ, бехатарии шабакаҳо ва навиштани скриптҳо (Python, Bash, C++).
 2. Барномасозӣ: Навиштани кодҳои мураккаб, веб-девелопмент, эҷоди ботҳо ва автоматизатсия.
-3. Кор бо рақамҳои телефон: Таҳлили сохтор, рамзҳои кишварҳо,OSINT (кушодани маълумоти оммавӣ) ва роҳҳои бехатарии рақамҳо.
+3. Кор бо рақамҳои телефон: Таҳлили сохтор, рамзҳои кишварҳо, OSINT ва роҳҳои бехатарии рақамҳо.
 4. Монтаж ва Видео: Машварат ва навиштани скриптҳо барои монтажи видео (CapCut, Premiere Pro), коркарди тасвир ва эффектҳо.
 5. Таҳлили Link (Истинодҳо): Таҳлили бехатарии URL, муайян кардани фишинг ва фиристодани истинодҳои зарурӣ.
 6. Забон: Ҳамеша бо забоне, ки корбар муроҷиат мекунад, посухи амиқ ва касбӣ диҳед.
 """
 
-# Рӯйхати 50 давлати ҷаҳон барои тугмаҳо
+# Рӯйхати 50 давлати ҷаҳон
 COUNTRIES = [
     "🇹🇯 Тоҷикистон", "🇷🇺 Русия", "🇹🇷 Туркия", "🇺🇸 ИМА", "🇬🇧 Британия",
     "🇨🇳 Чин", "🇩🇪 Олмон", "🇫🇷 Фаронса", "🇸🇦 Арабистони Саудӣ", "🇦🇪 Аморати Муттаҳида",
     "🇺🇿 Ӯзбекистон", "🇰🇿 Қазоқистон", "🇰🇬 Қирғизистон", "🇹🇲 Туркманистон", "🇮🇷 Эрон",
     "🇨🇦 Канада", "🇯🇵 Ҷопон", "🇰🇷 Кореяи Ҷанубӣ", "🇮🇳 Ҳиндустон", "🇵🇰 Покистон",
-    "🇮🇹 Италия", "🇪🇸 Испания", "🇵🇹 Португалия", "🇳🇱 Нидерландия", "🇨🇭 Швейтсария",
+    "🇮🇹 Италия", "🇪檐 Испания", "🇵🇹 Португалия", "🇳🇱 Нидерландия", "🇨🇭 Швейтсария",
     "🇸🇪 Шведсия", "🇳🇴 Норвегия", "🇫🇮 Финляндия", "🇵🇱 Польша", "🇺🇦 Украина",
     "🇦🇿 Озарбойҷон", "🇬🇪 Гурҷистон", "🇦🇲 Арманистон", "🇪🇬 Миср", "🇶🇦 Қатар",
     "🇧🇷 Бразилия", "🇲🇽 Мексика", "🇦🇺 Австралия", "🇦🇷 Аргентина", "🇲🇦 Марокаш",
@@ -38,7 +51,6 @@ COUNTRIES = [
 
 def get_country_keyboard(page=0):
     markup = types.InlineKeyboardMarkup(row_width=2)
-    # Нишон додани 10 кишвар дар як саҳифа
     start_idx = page * 10
     end_idx = start_idx + 10
     current_countries = COUNTRIES[start_idx:end_idx]
@@ -46,7 +58,6 @@ def get_country_keyboard(page=0):
     buttons = [types.InlineKeyboardButton(text=c, callback_data=f"country_{c}") for c in current_countries]
     markup.add(*buttons)
     
-    # Тугмаҳои паймоиш (Pagination)
     nav_buttons = []
     if page > 0:
         nav_buttons.append(types.InlineKeyboardButton(text="⬅️ Оқиб", callback_data=f"page_{page-1}"))
@@ -97,4 +108,9 @@ def handle_message(message):
         bot.reply_to(message, f"Хатогӣ: {str(e)}")
 
 if __name__ == "__main__":
+    # Сардодани веб-сервер дар замина (background thread)
+    server_thread = Thread(target=run_server)
+    server_thread.start()
+    
+    # Сардодани боти Телеграм
     bot.infinity_polling()
