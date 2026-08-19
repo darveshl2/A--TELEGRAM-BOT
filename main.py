@@ -1,129 +1,154 @@
 import os
+import requests
 import telebot
 from telebot import types
-from groq import Groq
+import google.generativeai as genai
 from flask import Flask
 from threading import Thread
 
-# Сервери Flask барои бастани порт дар Render
+# Сервери Flask барои фаъол нигоҳ доштани бот дар Render
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is alive!"
+    return "Bot is running with API Tokens!"
 
 def run_server():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
-# Гирифтани токенҳо аз Environment Variables
+# Гирифтани тамоми токенҳо аз Environment Variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+SHODAN_API_KEY = os.environ.get("SHODAN_API_KEY")
+VIRUSTOTAL_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY")
+ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY")
+
+# Танзими Google Gemini API
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-client = Groq(api_key=GROQ_API_KEY)
 
-# Танзими системавии универсалӣ (AI System Prompt)
-SYSTEM_PROMPT = """
-Шумо системаи пешрафтатарини интеллектуалӣ (AI) ва коршиноси ҳаматарафа ҳастед. 
-Вазифаҳои шумо:
-1. Киберамният ва Хакерӣ: Таҳлили заъфҳои системаҳо, Penetration Testing, таҳлили форензикӣ, бехатарии шабакаҳо ва навиштани скриптҳо (Python, Bash, C++).
-2. Барномасозӣ: Навиштани кодҳои мураккаб, веб-девелопмент, эҷоди ботҳо ва автоматизатсия.
-3. Кор бо рақамҳои телефон: Таҳлили сохтор, рамзҳои кишварҳо, OSINT ва роҳҳои бехатарии рақамҳо.
-4. Монтаж ва Видео: Машварат ва навиштани скриптҳо барои монтажи видео (CapCut, Premiere Pro), коркарди тасвир ва эффектҳо.
-5. Таҳлили Link (Истинодҳо): Таҳлили бехатарии URL, муайян кардани фишинг ва фиристодани истинодҳои зарурӣ.
-6. Забон: Ҳамеша бо забоне, ки корбар муроҷиат мекунад, посухи амиқ ва касбӣ диҳед.
-"""
-
-# Рӯйхати 50 давлати ҷаҳон
-COUNTRIES = [
-    "🇹🇯 Тоҷикистон", "🇷🇺 Русия", "🇹🇷 Туркия", "🇺🇸 ИМА", "🇬🇧 Британия",
-    "🇨🇳 Чин", "🇩🇪 Олмон", "🇫🇷 Фаронса", "🇸🇦 Арабистони Саудӣ", "🇦🇪 Аморати Муттаҳида",
-    "🇺🇿 Ӯзбекистон", "🇰🇿 Қазоқистон", "🇰🇬 Қирғизистон", "🇹🇲 Туркманистон", "🇮🇷 Эрон",
-    "🇨🇦 Канада", "🇯🇵 Ҷопон", "🇰🇷 Кореяи Ҷанубӣ", "🇮🇳 Ҳиндустон", "🇵🇰 Покистон",
-    "🇮🇹 Италия", "🇪🇸 Испания", "🇵🇹 Португалия", "🇳🇱 Нидерландия", "🇨🇭 Швейтсария",
-    "🇸🇪 Шведсия", "🇳🇴 Норвегия", "🇫🇮 Финляндия", "🇵🇱 Польша", "🇺АК Украина",
-    "🇦🇿 Озарбойҷон", "🇬🇪 Гурҷистон", "🇦🇲 Арманистон", "🇪🇬 Миср", "🇶🇦 Қатар",
-    "🇧🇷 Бразилия", "🇲🇽 Мексика", "🇦🇺 Австралия", "🇦🇷 Аргентина", "🇲🇦 Марокаш",
-    "🇮🇩 Индонезия", "🇲🇾 Малайзия", "🇹🇭 Таиланд", "🇻🇳 Вйетнам", "🇸🇬 Сингапур",
-    "🇧🇪 Беларус", "🇲🇩 Молдова", "🇮🇱 Исроил", "🇿🇦 Африқои Ҷанубӣ", "🇳🇬 Нигерия"
-]
-
-def get_country_keyboard(page=0):
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    start_idx = page * 10
-    end_idx = start_idx + 10
-    current_countries = COUNTRIES[start_idx:end_idx]
-    
-    buttons = [types.InlineKeyboardButton(text=c, callback_data=f"country_{c}") for c in current_countries]
-    markup.add(*buttons)
-    
-    nav_buttons = []
-    if page > 0:
-        nav_buttons.append(types.InlineKeyboardButton(text="⬅️ Оқиб", callback_data=f"page_{page-1}"))
-    if end_idx < len(COUNTRIES):
-        nav_buttons.append(types.InlineKeyboardButton(text="Пеш ➡️", callback_data=f"page_{page+1}"))
-    
-    if nav_buttons:
-        markup.add(*nav_buttons)
+# Менюи асосӣ
+def main_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("💬 AI Сӯҳбат", "🔍 Shodan IP")
+    markup.row("🛡 VirusTotal URL", "📊 AbuseIPDB Check")
     return markup
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    text = "Салом! Ман боти супер-интеллектуалӣ ҳастам.\n\nИмкониятҳо:\n- Киберамният ва Хакерӣ\n- Барномасозӣ ва Кодкунӣ\n- Кор бо рақамҳои телефон ва Link-ҳо\n- Монтаж ва кор бо видео\n\nБарои интихоби давлат тугмаи зерро пахш кунед:"
-    bot.send_message(message.chat.id, text, reply_markup=get_country_keyboard(0))
+def start_cmd(message):
+    text = (
+        "Салом! Боти бисёрфунксионалӣ бо пайвасти API-Токенҳо фаъол аст.\n\n"
+        "Хидматҳои пайвастшуда:\n"
+        "1. 💬 Google Gemini AI API (Сӯҳбат ва таҳлил ба 50+ забон)\n"
+        "2. 🔍 Shodan API (Таҳлили портҳо ва серверҳо)\n"
+        "3. 🛡 VirusTotal API (Санҷиши бехатарии истинодҳо)\n"
+        "4. 📊 AbuseIPDB API (Санҷиши репутатсияи IP)"
+    )
+    bot.send_message(message.chat.id, text, reply_markup=main_keyboard())
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback_listener(call):
-    if call.data.startswith("page_"):
-        page = int(call.data.split("_")[1])
-        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=get_country_keyboard(page))
-    elif call.data.startswith("country_"):
-        country_name = call.data.replace("country_", "")
-        bot.send_message(call.message.chat.id, f"Шумо кишвари **{country_name}**-ро интихоб кардед. Оид ба коду амният ё рақамҳои ин кишвар чӣ савол доред?")
+# 1. Shodan API
+@bot.message_handler(func=lambda m: m.text == "🔍 Shodan IP")
+def ask_shodan(message):
+    msg = bot.send_message(message.chat.id, "IP-суроғаро ворид кунед (масалан: 8.8.8.8):")
+    bot.register_next_step_handler(msg, process_shodan)
 
+def process_shodan(message):
+    if not SHODAN_API_KEY:
+        bot.send_message(message.chat.id, "❌ SHODAN_API_KEY дар Render танзим нашудааст.")
+        return
+    
+    ip = message.text.strip()
+    url = f"https://api.shodan.io/shodan/host/{ip}?key={SHODAN_API_KEY}"
+    try:
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            ports = data.get('ports', [])
+            org = data.get('org', 'Номаълум')
+            country = data.get('country_name', 'Номаълум')
+            bot.send_message(message.chat.id, f"🔍 **Shodan Report ({ip}):**\n\n▫️ Кишвар: {country}\n▫️ Ташкилот: {org}\n▫️ Портҳои кушода: {ports}", parse_mode="Markdown")
+        else:
+            bot.send_message(message.chat.id, f"❌ Маълумот ёфта нашуд ё хатогии API: {res.status_code}")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Хатогӣ: {e}")
+
+# 2. VirusTotal API
+@bot.message_handler(func=lambda m: m.text == "🛡 VirusTotal URL")
+def ask_virustotal(message):
+    msg = bot.send_message(message.chat.id, "Истинод (URL)-ро барои санҷиш фиристед:")
+    bot.register_next_step_handler(msg, process_virustotal)
+
+def process_virustotal(message):
+    if not VIRUSTOTAL_API_KEY:
+        bot.send_message(message.chat.id, "❌ VIRUSTOTAL_API_KEY дар Render танзим нашудааст.")
+        return
+
+    target_url = message.text.strip()
+    endpoint = "https://www.virustotal.com/api/v3/urls"
+    headers = {"x-apikey": VIRUSTOTAL_API_KEY}
+    
+    try:
+        res = requests.post(endpoint, headers=headers, data={"url": target_url}, timeout=10)
+        if res.status_code in [200, 201]:
+            bot.send_message(message.chat.id, f"✅ URL ба VirusTotal фиристода шуд. Анализ оғоз ёфт.")
+        else:
+            bot.send_message(message.chat.id, f"❌ Хатогии VirusTotal API: {res.status_code}")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Хатогӣ: {e}")
+
+# 3. AbuseIPDB API
+@bot.message_handler(func=lambda m: m.text == "📊 AbuseIPDB Check")
+def ask_abuseipdb(message):
+    msg = bot.send_message(message.chat.id, "IP-суроғаро барои санҷиш ворид кунед:")
+    bot.register_next_step_handler(msg, process_abuseipdb)
+
+def process_abuseipdb(message):
+    if not ABUSEIPDB_API_KEY:
+        bot.send_message(message.chat.id, "❌ ABUSEIPDB_API_KEY дар Render танзим нашудааст.")
+        return
+
+    ip = message.text.strip()
+    endpoint = "https://api.abuseipdb.com/api/v2/check"
+    headers = {"Key": ABUSEIPDB_API_KEY, "Accept": "application/json"}
+    params = {"ipAddress": ip, "maxAgeInDays": "90"}
+
+    try:
+        res = requests.get(endpoint, headers=headers, params=params, timeout=10)
+        if res.status_code == 200:
+            data = res.json().get("data", {})
+            score = data.get("abuseConfidenceScore", 0)
+            country = data.get("countryCode", "Номаълум")
+            usage = data.get("usageType", "Номаълум")
+            bot.send_message(message.chat.id, f"📊 **AbuseIPDB ({ip}):**\n\n▫️ Дараҷаи хатар: {score}%\n▫️ Кишвар: {country}\n▫️ Навъи истифода: {usage}", parse_mode="Markdown")
+        else:
+            bot.send_message(message.chat.id, f"❌ Хатогии API: {res.status_code}")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Хатогӣ: {e}")
+
+# 4. Google Gemini AI Handler
 @bot.message_handler(func=lambda message: True)
-def handle_message(message):
+def handle_ai_chat(message):
+    if not GEMINI_API_KEY:
+        bot.send_message(message.chat.id, "❌ GEMINI_API_KEY танзим нашудааст.")
+        return
+
     try:
         bot.send_chat_action(message.chat.id, 'typing')
-        
-        # Рӯйхати моделҳои фаъол ва пурқуввати Groq
-        models = [
-            "llama-3.1-8b-instant",
-            "llama3-70b-8192",
-            "llama3-8b-8192",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it"
-        ]
-        
-        answer = None
-        last_error = ""
-
-        for m in models:
-            try:
-                response = client.chat.completions.create(
-                    model=m,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": message.text}
-                    ],
-                    temperature=0.7
-                )
-                if response and response.choices:
-                    answer = response.choices[0].message.content
-                    break
-            except Exception as err:
-                last_error = str(err)
-                continue
-
-        if not answer:
-            answer = f"Хатогӣ: Моделҳо ҷавоб надоданд. Сабаб: {last_error}"
+        response = ai_model.generate_content(message.text)
+        answer = response.text
 
         if len(answer) > 4000:
             for x in range(0, len(answer), 4000):
                 bot.send_message(message.chat.id, answer[x:x+4000])
         else:
             bot.send_message(message.chat.id, answer)
-
     except Exception as e:
-        bot.send_message(message.chat.id, f"Хатогии системавӣ: {e}")
+        bot.send_message(message.chat.id, f"Хатогии AI: {e}")
+
+if __name__ == "__main__":
+    Thread(target=run_server).start()
+    bot.infinity_polling()
