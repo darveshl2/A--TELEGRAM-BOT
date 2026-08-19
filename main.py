@@ -1,7 +1,7 @@
 import os
 import telebot
 from telebot import types
-from openai import OpenAI
+from groq import Groq
 from flask import Flask
 from threading import Thread
 
@@ -18,10 +18,10 @@ def run_server():
 
 # Гирифтани токенҳо аз Environment Variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = Groq(api_key=GROQ_API_KEY)
 
 # Танзими системавии универсалӣ (AI System Prompt)
 SYSTEM_PROMPT = """
@@ -41,8 +41,8 @@ COUNTRIES = [
     "🇨🇳 Чин", "🇩🇪 Олмон", "🇫🇷 Фаронса", "🇸🇦 Арабистони Саудӣ", "🇦🇪 Аморати Муттаҳида",
     "🇺🇿 Ӯзбекистон", "🇰🇿 Қазоқистон", "🇰🇬 Қирғизистон", "🇹🇲 Туркманистон", "🇮🇷 Эрон",
     "🇨🇦 Канада", "🇯🇵 Ҷопон", "🇰🇷 Кореяи Ҷанубӣ", "🇮🇳 Ҳиндустон", "🇵🇰 Покистон",
-    "🇮🇹 Италия", "🇪檐 Испания", "🇵🇹 Португалия", "🇳🇱 Нидерландия", "🇨🇭 Швейтсария",
-    "🇸🇪 Шведсия", "🇳🇴 Норвегия", "🇫🇮 Финляндия", "🇵🇱 Польша", "🇺🇦 Украина",
+    "🇮🇹 Италия", "🇪🇸 Испания", "🇵🇹 Португалия", "🇳🇱 Нидерландия", "🇨🇭 Швейтсария",
+    "🇸🇪 Шведсия", "🇳🇴 Норвегия", "🇫🇮 Финляндия", "🇵🇱 Польша", "🇺АК Украина",
     "🇦🇿 Озарбойҷон", "🇬🇪 Гурҷистон", "🇦🇲 Арманистон", "🇪🇬 Миср", "🇶🇦 Қатар",
     "🇧🇷 Бразилия", "🇲🇽 Мексика", "🇦🇺 Австралия", "🇦🇷 Аргентина", "🇲🇦 Марокаш",
     "🇮🇩 Индонезия", "🇲🇾 Малайзия", "🇹🇭 Таиланд", "🇻🇳 Вйетнам", "🇸🇬 Сингапур",
@@ -87,8 +87,9 @@ def handle_message(message):
     try:
         bot.send_chat_action(message.chat.id, 'typing')
         
+        # Истифодаи модели ройгони Llama-3.3-70b
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": message.text}
