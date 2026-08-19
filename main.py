@@ -87,15 +87,18 @@ def handle_message(message):
     try:
         bot.send_chat_action(message.chat.id, 'typing')
         
-         # Рӯйхати моделҳои пурқувват бо гузариши автоматикӣ ҳангоми хатогӣ
+        # Рӯйхати моделҳои фаъол ва пурқуввати Groq
         models = [
-            "llama-3.1-70b-versatile",
-            "llama3-70b-8192",
             "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768"
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
         ]
         
-        response = None
+        answer = None
+        last_error = ""
+
         for m in models:
             try:
                 response = client.chat.completions.create(
@@ -106,25 +109,21 @@ def handle_message(message):
                     ],
                     temperature=0.7
                 )
-                break
-            except Exception:
+                if response and response.choices:
+                    answer = response.choices[0].message.content
+                    break
+            except Exception as err:
+                last_error = str(err)
                 continue
-        
-        answer = response.choices[0].message.content
-        
+
+        if not answer:
+            answer = f"Хатогӣ: Моделҳо ҷавоб надоданд. Сабаб: {last_error}"
+
         if len(answer) > 4000:
             for x in range(0, len(answer), 4000):
-                bot.reply_to(message, answer[x:x+4000])
+                bot.send_message(message.chat.id, answer[x:x+4000])
         else:
-            bot.reply_to(message, answer)
+            bot.send_message(message.chat.id, answer)
 
     except Exception as e:
-        bot.reply_to(message, f"Хатогӣ: {str(e)}")
-
-if __name__ == "__main__":
-    # Сардодани веб-сервер дар замина (background thread)
-    server_thread = Thread(target=run_server)
-    server_thread.start()
-    
-    # Сардодани боти Телеграм
-    bot.infinity_polling()
+        bot.send_message(message.chat.id, f"Хатогии системавӣ: {e}")
