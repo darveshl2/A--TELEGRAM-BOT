@@ -14,3 +14,9 @@ python-whois
 cryptography
 pwntools
 flask
+pyTelegramBotAPI
+flask
+groq
+scapy
+pwntools
+requests
