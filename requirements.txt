@@ -1,2 +1,3 @@
 aiogram
 requests
+g4f
