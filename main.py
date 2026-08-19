@@ -37,12 +37,6 @@ class BotStates(StatesGroup):
     waiting_for_video_montage = State()
 
 # Забонҳо ва матнҳо
-LANGUAGES = {
-    'tj': '🇹🇯 Тоҷикӣ',
-    'ru': '🇷🇺 Русский',
-    'en': '🇬🇧 English'
-}
-
 MESSAGES = {
     'tj': {
         'welcome': "Ассалому алейкум! Ба боти бисёрфунксионалии мо хуш омадед.",
@@ -53,7 +47,7 @@ MESSAGES = {
         'phone_links': "📱 Интиқоли коди телефон",
         'photo_montage': "🖼 Чопи акс ва монтаж",
         'video_montage': "🎬 Видео монтаж",
-        'ask_ai': "Саволи худро ба AI нависед:",
+        'ask_ai': "Саволи худро ба забони интихобкардаатон нависед ё акс фиристед:",
         'ask_site': "Лутфан линки сайт-ро фиристонед (масалан: https://example.com):",
         'ask_photo_montage': "Лутфан аксеро фиристед ва дар қисмати тавсиф (caption) нависед, ки чӣ тавр онро монтаж кунем:",
         'ask_video_montage': "Лутфан суратеро фиристед, ки мехоҳед аз рӯи он видео созед:",
@@ -68,7 +62,7 @@ MESSAGES = {
         'phone_links': "📱 Ссылки для подтверждения номера",
         'photo_montage': "🖼 Фотомонтаж",
         'video_montage': "🎬 Видеомонтаж",
-        'ask_ai': "Задайте ваш вопрос ИИ:",
+        'ask_ai': "Задайте ваш вопрос на выбранном языке или отправьте фото:",
         'ask_site': "Пожалуйста, отправьте ссылку на сайт (например: https://example.com):",
         'ask_photo_montage': "Отправьте фото и в описании (caption) напишите, как его обработать:",
         'ask_video_montage': "Отправьте фото, из которого нужно создать видео:",
@@ -83,7 +77,7 @@ MESSAGES = {
         'phone_links': "📱 Phone Verification Links",
         'photo_montage': "🖼 Photo Editing",
         'video_montage': "🎬 Video Editing",
-        'ask_ai': "Ask your question to AI:",
+        'ask_ai': "Ask your question in the chosen language or send a photo:",
         'ask_site': "Please send the website URL (e.g. https://example.com):",
         'ask_photo_montage': "Send a photo and describe in the caption how to edit it:",
         'ask_video_montage': "Send a photo to create a video from it:",
@@ -91,7 +85,6 @@ MESSAGES = {
     }
 }
 
-# Луғати нигоҳдории забони корбарон (дар хотира)
 user_languages = {}
 
 def get_msg(user_id, key):
@@ -113,7 +106,6 @@ def get_main_keyboard(user_id):
     )
     return keyboard
 
-# Сарлавҳаи /start
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     inline_kb = InlineKeyboardMarkup(
@@ -140,14 +132,16 @@ async def language_callback(call: types.CallbackQuery):
 async def change_language(message: types.Message):
     await start_handler(message)
 
-# 🤖 Чат бо AI
-@dp.message(F.text.in_([MESSAGES['tj']['ai_chat'], MESSAGES['ru']['ai_chat'], MESSAGES['en']['ai_chat']]))
+# 🤖 Чат ва Таҳлили сурат бо AI (Gemini)
+@dp.message(F.text.in_([
+    MESSAGES['tj']['ai_chat'], MESSAGES['ru']['ai_chat'], MESSAGES['en']['ai_chat']
+]))
 async def ask_ai_handler(message: types.Message, state: FSMContext):
     await state.set_state(BotStates.waiting_for_ai_prompt)
     await message.answer(get_msg(message.from_user.id, 'ask_ai'))
 
 @dp.message(BotStates.waiting_for_ai_prompt, F.text)
-async def process_ai_prompt(message: types.Message, state: FSMContext):
+async def process_ai_text_prompt(message: types.Message, state: FSMContext):
     if not ai_model:
         await message.answer(get_msg(message.from_user.id, 'no_ai'))
         await state.clear()
@@ -155,14 +149,43 @@ async def process_ai_prompt(message: types.Message, state: FSMContext):
 
     msg = await message.answer("⏳ ...")
     try:
-        response = ai_model.generate_content(message.text)
+        lang = user_languages.get(message.from_user.id, 'tj')
+        prompt = f"Please reply in the language specified by '{lang}' code. User message: {message.text}"
+        response = ai_model.generate_content(prompt)
         await msg.edit_text(response.text)
     except Exception as e:
         await msg.edit_text(f"Хатогӣ дар AI: {str(e)}")
     await state.clear()
 
+@dp.message(BotStates.waiting_for_ai_prompt, F.photo)
+async def process_ai_photo_prompt(message: types.Message, state: FSMContext):
+    if not ai_model:
+        await message.answer(get_msg(message.from_user.id, 'no_ai'))
+        await state.clear()
+        return
+
+    msg = await message.answer("⏳ Акс таҳлил шуда истодааст...")
+    try:
+        photo = message.photo[-1]
+        file_info = await bot.get_file(photo.file_id)
+        photo_bytes = await bot.download_file(file_info.file_path)
+        
+        image_data = [{"mime_type": "image/jpeg", "data": photo_bytes.read()}]
+        lang = user_languages.get(message.from_user.id, 'tj')
+        
+        user_caption = message.caption if message.caption else "Ин суратро пурра таҳлил кун ва тамоми тафсилоташро бигӯ."
+        prompt = f"Respond in the language specified by '{lang}' code. {user_caption}"
+        
+        response = ai_model.generate_content([prompt, image_data[0]])
+        await msg.edit_text(response.text)
+    except Exception as e:
+        await msg.edit_text(f"Хатогӣ ҳангоми таҳлили сурат: {str(e)}")
+    await state.clear()
+
 # 🌐 Коди сайт
-@dp.message(F.text.in_([MESSAGES['tj']['site_code'], MESSAGES['ru']['site_code'], MESSAGES['en']['site_code']]))
+@dp.message(F.text.in_([
+    MESSAGES['tj']['site_code'], MESSAGES['ru']['site_code'], MESSAGES['en']['site_code']
+]))
 async def ask_site_handler(message: types.Message, state: FSMContext):
     await state.set_state(BotStates.waiting_for_site_url)
     await message.answer(get_msg(message.from_user.id, 'ask_site'))
@@ -179,7 +202,6 @@ async def process_site_url(message: types.Message, state: FSMContext):
             async with session.get(url, timeout=10) as resp:
                 html_code = await resp.text()
                 
-                # Захира ба файл
                 file_path = "site_code.html"
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(html_code)
@@ -194,7 +216,9 @@ async def process_site_url(message: types.Message, state: FSMContext):
     await state.clear()
 
 # 📱 Линки тасдиқи номер
-@dp.message(F.text.in_([MESSAGES['tj']['phone_links'], MESSAGES['ru']['phone_links'], MESSAGES['en']['phone_links']]))
+@dp.message(F.text.in_([
+    MESSAGES['tj']['phone_links'], MESSAGES['ru']['phone_links'], MESSAGES['en']['phone_links']
+]))
 async def phone_links_handler(message: types.Message):
     text = (
         "🔗 **Сомонаҳо барои гирифтани рақами виртуалӣ ва коди SMS:**\n\n"
@@ -206,7 +230,9 @@ async def phone_links_handler(message: types.Message):
     await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
 
 # 🖼 Акс ва монтаж
-@dp.message(F.text.in_([MESSAGES['tj']['photo_montage'], MESSAGES['ru']['photo_montage'], MESSAGES['en']['photo_montage']]))
+@dp.message(F.text.in_([
+    MESSAGES['tj']['photo_montage'], MESSAGES['ru']['photo_montage'], MESSAGES['en']['photo_montage']
+]))
 async def ask_photo_montage(message: types.Message, state: FSMContext):
     await state.set_state(BotStates.waiting_for_photo_montage)
     await message.answer(get_msg(message.from_user.id, 'ask_photo_montage'))
@@ -216,12 +242,10 @@ async def process_photo_montage(message: types.Message, state: FSMContext):
     await message.answer("Акс қабул шуд! Вазифа ба коркард фиристода шуд.")
     await state.clear()
 
-@dp.message(BotStates.waiting_for_photo_montage)
-async def wrong_photo_montage(message: types.Message):
-    await message.answer("⚠️ Лутфан аввал як акс (сурат) фиристед ва дар қисмати тавсиф нависед.")
-
 # 🎬 Видео монтаж
-@dp.message(F.text.in_([MESSAGES['tj']['video_montage'], MESSAGES['ru']['video_montage'], MESSAGES['en']['video_montage']]))
+@dp.message(F.text.in_([
+    MESSAGES['tj']['video_montage'], MESSAGES['ru']['video_montage'], MESSAGES['en']['video_montage']
+]))
 async def ask_video_montage(message: types.Message, state: FSMContext):
     await state.set_state(BotStates.waiting_for_video_montage)
     await message.answer(get_msg(message.from_user.id, 'ask_video_montage'))
@@ -231,10 +255,6 @@ async def process_video_montage(message: types.Message, state: FSMContext):
     await message.answer("Акс қабул шуд! Дар ҳоли омода кардани сенария ва табдил додани сурат ба видео...")
     await message.answer("✅ Видео аз рӯи сурат сохта шуд!")
     await state.clear()
-
-@dp.message(BotStates.waiting_for_video_montage)
-async def wrong_video_montage(message: types.Message):
-    await message.answer("⚠️ Лутфан суратеро, ки мехоҳед аз рӯи он видео созед, ҳамчун расм (фото) фиристед.")
 
 # Веб-сервери хурд барои Render
 app = Flask(__name__)
@@ -253,6 +273,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    # Веб-серверро дар як поток (thread) алоҳида сар медиҳем
     threading.Thread(target=run_web).start()
     asyncio.run(main())
