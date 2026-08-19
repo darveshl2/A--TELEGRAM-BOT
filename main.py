@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import os
+import threading
+from flask import Flask
 import aiohttp
-from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.fsm.context import FSMContext
@@ -251,9 +252,23 @@ async def process_video_montage(message: types.Message, state: FSMContext):
 async def wrong_video_montage(message: types.Message):
     await message.answer("⚠️ Лутфан суратеро, ки мехоҳед аз рӯи он видео созед, ҳамчун расм (фото) фиристед.")
 
+# Веб-сервери хурд барои Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# Оғоз кардани бот ва веб-сервер
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    # Веб-серверро дар як поток (thread) алоҳида сар медиҳем
+    threading.Thread(target=run_web).start()
     asyncio.run(main())
