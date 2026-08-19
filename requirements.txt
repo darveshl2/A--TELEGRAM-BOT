@@ -1,7 +1,6 @@
 aiogram
 requests
-g4f
-google-genai
+google-generativeai
 pillow
 edge-tts
 aiohttp
