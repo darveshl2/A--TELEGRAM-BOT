@@ -7,17 +7,24 @@ from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from g4f.client import AsyncClient
+import google.generativeai as genai
 
 # Танзимоти логҳо
 logging.basicConfig(level=logging.INFO)
 
-# Гирифтани токен аз Environment Variables ё истифодаи токени пешфарз
+# Гирифтани токенҳо аз Environment Variables
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8996039934:AAFaVo2V1vmZpdxfavRqND_oTp8VNUB9hu8")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+# Танзими Google Gemini API
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+    ai_model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    ai_model = None
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-ai_client = AsyncClient()
 
 # Хотира барои нигоҳдории забони корбар
 user_languages = {}
@@ -190,7 +197,7 @@ async def process_phone(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
     await state.clear()
 
-# 🤖 AI
+# 🤖 AI бо Google Gemini
 @dp.message(F.text == "🤖 Савол-ҷавоб бо AI (Бепул)")
 async def ask_ai(message: types.Message, state: FSMContext):
     await state.set_state(BotStates.waiting_for_ai)
@@ -198,17 +205,18 @@ async def ask_ai(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.waiting_for_ai)
 async def process_ai(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
     processing_msg = await message.answer("Дар ҳоли фикрронӣ... 🧠")
     try:
-        response = await ai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": message.text}]
-        )
-        answer = response.choices[0].message.content
+        if not ai_model:
+            await bot.edit_message_text("Хатогӣ: GOOGLE_API_KEY дар Render танзим нашудааст!", chat_id=message.chat.id, message_id=processing_msg.message_id)
+            await state.clear()
+            return
+
+        response = await asyncio.to_thread(ai_model.generate_content, message.text)
+        answer = response.text if response.text else "Ҷавоб пайдо нашуд."
         await bot.edit_message_text(answer, chat_id=message.chat.id, message_id=processing_msg.message_id)
     except Exception as e:
-        await bot.edit_message_text("Сервер банд аст, каме баъдтар санҷед.", chat_id=message.chat.id, message_id=processing_msg.message_id)
+        await bot.edit_message_text(f"Хатогӣ ҳангоми ҷавоб: {e}", chat_id=message.chat.id, message_id=processing_msg.message_id)
     await state.clear()
 
 # 🖼️ Монтажи акс
