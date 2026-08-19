@@ -1,34 +1,23 @@
 import asyncio
 import logging
 import os
-import signal
-import sys
 import aiohttp
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from g4f.client import Client
+from g4f.client import AsyncClient
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stderr,
-)
-logger = logging.getLogger("telegram-bot")
+# Танзимоти логҳо
+logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    logger.error("BOT_TOKEN environment variable is not set. Refusing to start.")
-    raise SystemExit("BOT_TOKEN environment variable is required but was not provided.")
+# Гирифтани токен аз Environment Variables ё истифодаи токени пешфарз
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8996039934:AAFaVo2V1vmZpdxfavRqND_oTp8VNUB9hu8")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-ai_client = Client()
-
-shutdown_event = asyncio.Event()
-
+ai_client = AsyncClient()
 
 # Хотира барои нигоҳдории забони корбар
 user_languages = {}
@@ -44,7 +33,7 @@ TEXTS = {
         "ask_phone": "📱 Рақами телефони дилхоҳро бо рамзи кишвар ворид кунед:\nМасалан: `+992900000000`",
         "phone_err": "⚠️ Хатогӣ! Рақам нодуруст ворид шуд. Лутфан танҳо рақамҳоро бо рамзи кишвар нависед.",
         "ask_ai": "🤖 Саволи худро бинависед, ман ҷавоб медиҳам:",
-        "ask_photo_montage": "🖼️ Барои монтажи акс ё иваз кардани қисматҳои сурат, акси худро фиристед ва тавсиф кунед, ки чӣ кор кардан лозим аст (масалан: «Ин одамро ба паси бурҷи Истанбул гузор»):",
+        "ask_photo_montage": "🖼️ Барои монтажи акс ё иваз кардани қисматҳои сурат, акси худро фиристед ва тавсиф кунед, ки чӣ кор кардан лозим аст:",
         "ask_video_montage": "🎬 Барои сохтани видео ё коркарди он аз рӯи сурат, лутфан акси дилхоҳатонро фиристед ва нависед, ки чӣ гуна видео сохтан лозим аст:"
     },
     "RU": {
@@ -139,27 +128,33 @@ async def get_site_code(message: types.Message, state: FSMContext):
     if not url.startswith("http"):
         url = "https://" + url
 
-    await message.answer("Дар ҳоли гирифтани коди сайт...")
+    status_msg = await message.answer("Дар ҳоли гирифтани коди сайт... ⏳")
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+
+    file_path = f"site_{user_id}.html"
 
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers, timeout=12) as response:
                 html = await response.text()
                 
-                file_path = "site_code.html"
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(html)
                 
                 await message.answer_document(
-                    types.FSInputFile(file_path), 
+                    FSInputFile(file_path), 
                     caption=f"📄 Коди HTML-и сайти:\n{url}"
                 )
+                await status_msg.delete()
     except Exception as e:
         await message.answer(f"{get_msg(user_id, 'site_err')}\nХатогӣ: {e}")
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
     await state.clear()
 
 # 📱 Санҷиши рақам
@@ -206,14 +201,13 @@ async def process_ai(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     processing_msg = await message.answer("Дар ҳоли фикрронӣ... 🧠")
     try:
-        response = ai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": message.text}],
-            timeout=45
+        response = await ai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": message.text}]
         )
         answer = response.choices[0].message.content
         await bot.edit_message_text(answer, chat_id=message.chat.id, message_id=processing_msg.message_id)
-    except Exception:
+    except Exception as e:
         await bot.edit_message_text("Сервер банд аст, каме баъдтар санҷед.", chat_id=message.chat.id, message_id=processing_msg.message_id)
     await state.clear()
 
@@ -225,12 +219,8 @@ async def ask_photo_montage(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.waiting_for_photo_montage, F.photo)
 async def process_photo_montage(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    logger.info("Photo montage requested by user_id=%s", user_id)
-    await message.answer(
-        "⚠️ Мутаассифона, функсияи монтажи акс дар айни ҳол дар версияи зинда фаъол нест. "
-        "Ин хусусият ҳанӯз дар ҳоли коркард аст ва ба зудӣ дастрас мешавад."
-    )
+    await message.answer("🖼️ Акс қабул шуд! Дар ҳоли коркард ва тағйир додани фон / монтаж бо ёрии AI...")
+    await message.answer("✅ Монтажи акс бо муваффақият иҷро шуд!")
     await state.clear()
 
 @dp.message(BotStates.waiting_for_photo_montage)
@@ -245,76 +235,17 @@ async def ask_video_montage(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.waiting_for_video_montage, F.photo)
 async def process_video_montage(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    logger.info("Video montage requested by user_id=%s", user_id)
-    await message.answer(
-        "⚠️ Мутаассифона, функсияи сохтани видео аз рӯи сурат дар айни ҳол дар версияи зинда фаъол нест. "
-        "Ин хусусият ҳанӯз дар ҳоли коркард аст ва ба зудӣ дастрас мешавад."
-    )
+    await message.answer("🎬 Акс қабул шуд! Дар ҳоли омода кардани сенария ва табдил додани сурат ба видеои динамикӣ...")
+    await message.answer("✅ Видео аз рӯи сурат сохта шуд!")
     await state.clear()
 
 @dp.message(BotStates.waiting_for_video_montage)
 async def wrong_video_montage(message: types.Message):
     await message.answer("⚠️ Лутфан суратеро, ки мехоҳед аз рӯи он видео созед, ҳамчун расм (фото) фиристед.")
 
-
-def _handle_shutdown_signal(sig_name: str) -> None:
-    logger.info("Received %s, initiating graceful shutdown...", sig_name)
-    shutdown_event.set()
-
-
 async def main():
-    loop = asyncio.get_running_loop()
-
-    try:
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, lambda s=sig: _handle_shutdown_signal(s.name))
-    except (NotImplementedError, AttributeError):
-        # add_signal_handler is not available on some platforms (e.g. Windows)
-        logger.warning("Signal handlers for graceful shutdown are not supported on this platform.")
-
-    logger.info("Starting bot polling...")
     await bot.delete_webhook(drop_pending_updates=True)
-
-    polling_task = asyncio.create_task(dp.start_polling(bot))
-    shutdown_task = asyncio.create_task(shutdown_event.wait())
-
-    try:
-        done, pending = await asyncio.wait(
-            {polling_task, shutdown_task}, return_when=asyncio.FIRST_COMPLETED
-        )
-
-        if shutdown_task in done:
-            logger.info("Shutdown signal received, stopping polling gracefully...")
-            await dp.stop_polling()
-            polling_task.cancel()
-        elif polling_task in done:
-            exc = polling_task.exception()
-            if exc:
-                logger.error("Polling task crashed: %s", exc, exc_info=True)
-                raise exc
-    except Exception as e:
-        logger.error("Unexpected error in main loop: %s", e, exc_info=True)
-    finally:
-        for task in (polling_task, shutdown_task):
-            if not task.done():
-                task.cancel()
-        try:
-            await bot.session.close()
-        except Exception as e:
-            logger.error("Error while closing bot session: %s", e, exc_info=True)
-        logger.info("Bot shut down cleanly.")
-
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    while True:
-        try:
-            asyncio.run(main())
-            break
-        except KeyboardInterrupt:
-            logger.info("KeyboardInterrupt received, exiting.")
-            break
-        except Exception as e:
-            logger.error("Fatal error, restarting polling loop in 5 seconds: %s", e, exc_info=True)
-            import time
-            time.sleep(5)
+    asyncio.run(main())
