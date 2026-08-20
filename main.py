@@ -108,6 +108,15 @@ def main():
 
     print("BOT STARTED 24/7")
 
-    app.run_polling()
+async def run_bot():
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
+    import asyncio
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(run_bot())
