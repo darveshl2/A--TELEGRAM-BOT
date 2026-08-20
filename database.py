@@ -12,8 +12,8 @@ def get_connection():
 
 # Сохтани база
 def init_db():
- conn = get_connection()
- cursor = conn.cursor()
+    conn = get_connection()
+    cursor = conn.cursor()
 
     # Users
     cursor.execute("""
@@ -45,14 +45,11 @@ def add_user(user_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO users
-        (user_id, date_joined)
-        VALUES (?, ?)
-        """,
-        (user_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    )
+    cursor.execute("""
+    INSERT OR IGNORE INTO users
+    (user_id, date_joined)
+    VALUES (?, ?)
+    """, (user_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
     conn.commit()
     conn.close()
@@ -63,14 +60,11 @@ def add_activity(user_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE users
-        SET activity = activity + 1
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    cursor.execute("""
+    UPDATE users
+    SET activity = activity + 1
+    WHERE user_id = ?
+    """, (user_id,))
 
     conn.commit()
     conn.close()
@@ -81,18 +75,11 @@ def add_log(user_id, action):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        INSERT INTO logs
-        (user_id, action, date)
-        VALUES (?, ?, ?)
-        """,
-        (
-            user_id,
-            action,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        )
-    )
+    cursor.execute("""
+    INSERT INTO logs
+    (user_id, action, date)
+    VALUES (?, ?, ?)
+    """, (user_id, action, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
     conn.commit()
     conn.close()
@@ -103,13 +90,10 @@ def get_user(user_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT * FROM users WHERE user_id=?",
-        (user_id,)
-    )
+    cursor.execute("""
+    SELECT * FROM users WHERE user_id = ?
+    """, (user_id,))
 
     user = cursor.fetchone()
-
     conn.close()
-
     return user
