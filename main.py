@@ -134,10 +134,9 @@ def public_ip(ip_text):
 async def resolve_public(host):
     try:
         infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
-        except socket.gaierror:
-            return False
         return all(public_ip(item[4][0]) for item in infos)
-
+    except socket.gaierror:
+        return False
 async def validate_url(url):
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
