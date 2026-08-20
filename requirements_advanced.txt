@@ -1,0 +1,5 @@
+aiogram>=3.0,<4
+google-genai
+aiohttp
+Flask
+dnspython
