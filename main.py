@@ -258,9 +258,8 @@ Username: @{user.username}
         )
 # ===== BOT START =====
 
-async def main():
-
-    await init_db()
+def main():
+    asyncio.run(init_db())
 
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -275,11 +274,10 @@ async def main():
         )
     )
 
-    print("🤖 AVALIN SECURITY BOT STARTED")
+    print("🔒 AVALIN SECURITY BOT STARTED")
 
-    await app.run_polling()
-
+    app.run_polling()
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    main()
