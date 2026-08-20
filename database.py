@@ -11,9 +11,9 @@ def get_connection():
 
 
 # Сохтани база
-    def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
+def init_db():
+ conn = get_connection()
+ cursor = conn.cursor()
 
     # Users
     cursor.execute("""
