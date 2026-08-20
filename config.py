@@ -7,7 +7,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv("8996039934:AAFaVo2VlVmZpdxfavRqND_oTp8VNUB9hu8")
 
 # Admin Telegram ID
-ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "78750558715"))
 
 # Database
 DATABASE = "data/bot.db"
