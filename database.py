@@ -11,7 +11,7 @@ def get_connection():
 
 
 # Сохтани база
-async def init_db():
+    def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
